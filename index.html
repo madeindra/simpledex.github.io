@@ -43,6 +43,7 @@ var currentImages = [];
 var currentHash = "";
 var currentIdx = 0;
 var currentMangaId = "";
+var lastKnownSearch = "";
 
 function searchInput(evt){
 	if (evt.keyCode == 13) {
@@ -65,7 +66,8 @@ function splitTermToTitles(searchTerm) {
 }
 
 function search(){
-	G("https://api.mangadex.org/manga?title="+splitTermToTitles(D("search_term").value)+"&limit=100",populateResults);
+	lastKnownSearch = splitTermToTitles(D("search_term").value);
+	G("https://api.mangadex.org/manga?title="+lastKnownSearch+"&limit=100",populateManga);
 }
 
 function populateError(parent, code, text) {
@@ -84,7 +86,7 @@ function addCell(parent, text) {
 	return tmp;
 }
 
-function populateResults(resultJson, resultCode) {
+function populateManga(resultJson, resultCode) {
 	let a = D("search_results");
 	D("manga_name").innerText="None";
 	D("chapter_num").innerText = "None";
@@ -114,7 +116,7 @@ function populateResults(resultJson, resultCode) {
 		}
 		D("search_info").innerHTML = resultJson.total + " manga found!";
 		if (resultJson.limit < resultJson.total) {
-			createPageButtons(resultJson.total, 2);
+			createMangaPageButtons(resultJson.total, 2, "https://api.mangadex.org/manga?title="+lastKnownSearch+"&limit=100&offset=");
 		}
 	} else {
 		if (resultCode == 204) {
@@ -125,7 +127,17 @@ function populateResults(resultJson, resultCode) {
 	}
 }
 
-function createPageButtons(total, tableCols) {
+
+
+function createMangaPageButtons(total, tableCols, pageBaseUrl) {
+	createPageButtons(total, tableCols, pageBaseUrl, populateManga)
+}
+
+function createChapterPageButtons(total, tableCols, pageBaseUrl) {
+	createPageButtons(total, tableCols, pageBaseUrl, populateChapters)
+}
+
+function createPageButtons(total, tableCols, pageBaseUrl, callback) {
 	let row = C("tr");
 	let cell = C("td");
 	cell.colSpan=tableCols;
@@ -139,7 +151,7 @@ function createPageButtons(total, tableCols) {
 		pageLink.innerHTML = "Page " + (i+1);
 		let offset=100*i;
 		pageLink.addEventListener("click", ()=>{
-			G("https://api.mangadex.org/chapter?manga="+currentMangaId+"&limit=100&offset="+offset,populateChapters);
+			G(pageBaseUrl+offset,callback);
 		});
 		cell.appendChild(pageLink);
 	}
@@ -180,7 +192,7 @@ function populateChapters(resultJson, resultCode) {
 		}
 		D("search_info").innerHTML = resultJson.total + " chapter" + (resultJson.total != 1 ? "s":"") + " found!";
 		if (resultJson.limit < resultJson.total) {
-			createPageButtons(resultJson.total, 4);
+			createChapterPageButtons(resultJson.total, 4, "https://api.mangadex.org/chapter?manga="+currentMangaId+"&limit=100&offset=");
 		}
 	} else {
 		if (resultCode == 204) {
