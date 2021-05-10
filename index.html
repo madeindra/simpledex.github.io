@@ -3,15 +3,32 @@
 <title>Jarppi's P&M Reader</title>
 <meta name="description" content="Jarppi's portable Reader for Pictures and Manga">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="UTF-8">
 <script>
-var dm=false; // dm=true for direct mode. Does not work with current Mangadex API because of CORS. dm=false to proxy queries
+var dm = false; // dm = true for direct mode. Does not work with current Mangadex API because of CORS. dm = false to proxy queries
 // Some shortcuts for common and generic functions
-var J=JSON,r=J.parse,s=J.stringify,A=document;
-var D=function(p){return A.getElementById(p)};
-var C=function(p){return A.createElement(p)};
-var q=function(m,p,c){var x=new XMLHttpRequest();x.open(m,dm?p:"https://jsonp.afeld.me/?url="+escape(p),true);x.onreadystatechange=function(){if(x.readyState==4){c(r(x.responseText));}};return x;}
-function G(p,c){var x=q("GET",p,c);x.send();}
-function P(p,d,c) {var x=q("POST",p,c);x.setRequestHeader("Content-type", "application/json");x.send(s(d));}
+var J=JSON, r=J.parse, s=J.stringify, A=document;
+var D = function(p) { return A.getElementById(p) };
+var C = function(p) { return A.createElement(p) };
+var q = function(method,path,callback) {
+	let x = new XMLHttpRequest();
+	x.open(method, dm ? path : "https://jsonp.afeld.me/?url="+escape(path), true);
+	x.onreadystatechange = function() {
+		if (x.readyState == 4) {
+			callback(x.status == 200 ? r(x.responseText) : x.responseText, x.status);
+		}
+	};
+	return x;
+}
+function G(path,callback) {
+	let request = q("GET",path,callback);
+	request.send();
+}
+function P(path,data,callback) {
+	let request = q("POST",path,callback);
+	x.setRequestHeader("Content-type", "application/json");
+	x.send(s(data));
+}
 
 /*
 * Reader specific stuff below
@@ -33,50 +50,85 @@ function searchInput(evt){
 		search();
 	}
 }
+
+function tidyDescription(rawDesc){
+	if (rawDesc == null) return "";
+	// Thanks! u/thuniffe
+	return rawDesc.replace(/\[(\/?[biu]|hr)\]/g,"<$1>").replaceAll("[*]","<br />")
+	.replace(/\[url\=([^\]]+)\]([^\[]+)\[\/url\]/g,'<a href="$1">$2</a>').replace(/\[img\]([^\[]+)\[\/img\]/g,'<img src="$1">');
+
+}
+
+function splitTermToTitles(searchTerm) {
+	if (searchTerm.indexOf(' ') < 0) return searchTerm;
+	return searchTerm.trim().split(' ').join("+");
+}
+
 function search(){
-	G("https://api.mangadex.org/manga?title="+D("search_term").value+"&limit=100",populateResults);
+	G("https://api.mangadex.org/manga?title="+splitTermToTitles(D("search_term").value)+"&limit=100",populateResults);
+}
+
+function populateError(parent, code, text) {
+	D("search_info").innerHTML = "Error " + code;
+	D("manga_name").innerText="None";
+	D("chapter_num").innerText = "None";
+	if (text != null && text.length > 0) {
+		parent.appendChild(addCell(C("tr"), text));
+	}
 }
 
 function addCell(parent, text) {
 	let tmp = C("td");
 	tmp.innerHTML=text;
 	parent.appendChild(tmp);
+	return tmp;
 }
 
-function populateResults(resultJson) {
+function populateResults(resultJson, resultCode) {
 	let a = D("search_results");
 	D("manga_name").innerText="None";
+	D("chapter_num").innerText = "None";
 	while (a.firstChild) {
 		a.removeChild(a.firstChild);
 	}
 	let resultList = resultJson != null ? resultJson.results : [];
-	if (resultList.length > 0) {
+	if (resultCode == 200 && resultList.length > 0) {
 		let row = C("tr");
-		addCell(row,"Title");
-		addCell(row,"Description");
+		addCell(row,"Title").style.width = "20%";
+		addCell(row,"Description").style.width = "80%";
 		a.appendChild(row);
 		resultList.sort(nameSort);
 		for (var resultObj in resultList) {
 			let row = C("tr");
 			let mangaName = unescape(resultList[resultObj].data.attributes.title.en);
-			addCell(row, mangaName);
-			addCell(row, unescape(resultList[resultObj].data.attributes.description.en));
-			row.classList.add("link");
 			let mangaId = resultList[resultObj].data.id;
-			row.addEventListener("click", () => {
+			let mandaNameCell = addCell(row, mangaName);
+			addCell(row, tidyDescription(unescape(resultList[resultObj].data.attributes.description.en)));
+			mandaNameCell.classList.add("link");
+			mandaNameCell.addEventListener("click", () => {
 				G("https://api.mangadex.org/chapter?manga="+mangaId+"&limit=100",populateChapters);
 				currentMangaId = mangaId;
 				D("manga_name").innerHTML=mangaName;
 			});
 			a.appendChild(row);
 		}
+		D("search_info").innerHTML = resultJson.total + " manga found!";
+		if (resultJson.limit < resultJson.total) {
+			createPageButtons(resultJson.total, 2);
+		}
+	} else {
+		if (resultCode == 204) {
+			D("search_info").innerHTML = "No results";
+		} else {
+			populateError(a, resultCode, resultJson);
+		}
 	}
 }
 
-function createPageButtons(total) {
+function createPageButtons(total, tableCols) {
 	let row = C("tr");
 	let cell = C("td");
-	cell.colSpan=4;
+	cell.colSpan=tableCols;
 	let pages = Math.ceil(total / 100.0);
 	if (pages > MAX_PAGES) pages = MAX_PAGES;
 	for (let i = 0; i < pages; i++) {
@@ -95,13 +147,13 @@ function createPageButtons(total) {
 	D("search_results").appendChild(row);
 }
 
-function populateChapters(resultJson) {
+function populateChapters(resultJson, resultCode) {
 	let a = D("search_results");
 	while (a.firstChild) {
 		a.removeChild(a.firstChild);
 	}
 	let resultList = resultJson != null ? resultJson.results : [];
-	if (resultList.length > 0) {
+	if (resultCode == 200 && resultList.length > 0) {
 		let row = C("tr");
 		addCell(row,"Chapter");
 		addCell(row,"Title");
@@ -126,9 +178,15 @@ function populateChapters(resultJson) {
 			});
 			a.appendChild(row);
 		}
-		//if (resultJson.limit + resultJson.offset < resultJson.total) {
+		D("search_info").innerHTML = resultJson.total + " chapter" + (resultJson.total != 1 ? "s":"") + " found!";
 		if (resultJson.limit < resultJson.total) {
-			createPageButtons(resultJson.total);
+			createPageButtons(resultJson.total, 4);
+		}
+	} else {
+		if (resultCode == 204) {
+			D("search_info").innerHTML = "No results";
+		} else {
+			populateError(a, resultCode, resultJson);
 		}
 	}
 }
@@ -232,6 +290,7 @@ document.addEventListener("keydown", shortcuts);
 <div id="search">
 <input type="text" id="search_term" onkeydown="searchInput(event)"/>
 <input type="button" onclick="search()" value="Search Manga"/>
+<label for="search_term" id="search_info"></label>
 <div id="manga_name">None</div>
 <div id="chapter_num">None</div>
 <table id="search_results"></table>
