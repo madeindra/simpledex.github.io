@@ -55,9 +55,9 @@ function searchInput(evt){
 function tidyDescription(rawDesc){
 	if (rawDesc == null) return "";
 	// Thanks! u/thuniffe
-	return rawDesc.replace(/\[(\/?[biu]|hr)\]/g,"<$1>").replaceAll("[*]","<br />")
-	.replace(/\[url\=([^\]]+)\]([^\[]+)\[\/url\]/g,'<a href="$1">$2</a>').replace(/\[img\]([^\[]+)\[\/img\]/g,'<img src="$1">');
-
+	return rawDesc.replace(/\[(\/?[biu]|hr)\]/g,"<$1>").replaceAll("[*]","<br />").replaceAll("\n","<br />")
+	.replace(/\[img\]([^\[]+)\[\/img\]/g,'<img src="$1">').replace(/\[url\=([^\]]+)\]([^\[]+)\[\/url\]/g,'<a href="$1">$2</a>')
+	.replace(/\[spoiler\]/gi,'<span class="spoiler">').replace(/\[\/spoiler\]/gi,'</span>');
 }
 
 function splitTermToTitles(searchTerm) {
@@ -72,8 +72,8 @@ function search(){
 
 function populateError(parent, code, text) {
 	D("search_info").innerHTML = "Error " + code;
-	D("manga_name").innerText="None";
-	D("chapter_num").innerText = "None";
+	D("manga_name").innerText="";
+	D("chapter_num").innerText = "";
 	if (text != null && text.length > 0) {
 		parent.appendChild(addCell(C("tr"), text));
 	}
@@ -88,8 +88,8 @@ function addCell(parent, text) {
 
 function populateManga(resultJson, resultCode) {
 	let a = D("search_results");
-	D("manga_name").innerText="None";
-	D("chapter_num").innerText = "None";
+	D("manga_name").innerText="";
+	D("chapter_num").innerText = "";
 	while (a.firstChild) {
 		a.removeChild(a.firstChild);
 	}
@@ -105,7 +105,10 @@ function populateManga(resultJson, resultCode) {
 			let mangaName = unescape(resultList[resultObj].data.attributes.title.en);
 			let mangaId = resultList[resultObj].data.id;
 			let mandaNameCell = addCell(row, mangaName);
-			addCell(row, tidyDescription(unescape(resultList[resultObj].data.attributes.description.en)));
+			let descriptionContainer = C("div");
+			descriptionContainer.classList.add("description");
+			descriptionContainer.innerHTML = tidyDescription(unescape(resultList[resultObj].data.attributes.description.en));
+			row.appendChild(descriptionContainer);
 			mandaNameCell.classList.add("link");
 			mandaNameCell.addEventListener("click", () => {
 				G("https://api.mangadex.org/chapter?manga="+mangaId+"&limit=100",populateChapters);
@@ -283,11 +286,17 @@ document.addEventListener("keydown", shortcuts);
 
 </script>
 <style>
-#view {display:none;width=100%;height=100%}
-#search {display:block;width:100%;height:100%}
+body {background-color:#c0fefe}
+#view {display:none;width=100%;height:100%}
+#search {display:block;width:80%;margin:auto;padding:2em;background-color:#f9fdfe}
+#search_results {display:inline-block}
 #search_results tr {background-color:#fafafa;margin:0.5em}
 #search_results tr:nth-child(odd) {background-color:#e6e2e1;margin:0.5em}
-.link,.view_preview {cursor: pointer;}
+.description {max-height:18em;overflow-y:auto}
+.spoiler {display:block}
+.spoiler:not(:hover) {text-color:#101010;background-color:#101010;max-width:20%;max-height:2em;display:block;overflow:hidden}
+.spoiler:not(:hover)>a {text-decoration:none;color:inherit}
+.link,.view_preview {cursor:pointer}
 .view_preview img {margin-top:5%;float:left;width:5%}
 .view_main img {margin:auto;float:left;width:80%;object-fit:contain}
 </style>
@@ -300,11 +309,12 @@ document.addEventListener("keydown", shortcuts);
 <div id="view_right" onclick=movePage(-1) class="view_preview"></div>
 </div>
 <div id="search">
+<h3>SimpleDex v0.1.3</h3>
 <input type="text" id="search_term" onkeydown="searchInput(event)"/>
 <input type="button" onclick="search()" value="Search Manga"/>
 <label for="search_term" id="search_info"></label>
-<div id="manga_name">None</div>
-<div id="chapter_num">None</div>
+<div id="manga_name"></div>
+<div id="chapter_num"></div>
 <table id="search_results"></table>
 </div>
 </body>
