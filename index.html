@@ -36,6 +36,7 @@ function P(path,data,callback) {
 
 // Max amount of result pages for big searches
 var MAX_PAGES = 100;
+var TITLE = "Jarppi's P&M Reader";
 
 // Global static variables for reader
 var blockDoujinshi = false;
@@ -48,6 +49,32 @@ var lastKnownSearch = "";
 var lastForcedLocale = "";
 var idStore = [];
 var pendingElements = [];
+var STATE_CONTAINER = [];
+
+function initPage() {
+	//window.history.pushState({"state": "clean"}, TITLE);
+	if (document.location.href.indexOf('?') >= 0) {
+		let urlParams = document.location.href.substring(1+document.location.href.indexOf('?')).split('&');
+		let tmpKeyPairs = [];
+		for (let i in urlParams) {
+			let keypair = urlParams[i].split("=");
+			STATE_CONTAINER[keypair[0]] = keypair.length == 2 ? keypair[1] : null;
+		}
+		restoreSession();
+	}
+}
+
+function restoreSession() {
+	let lang = STATE_CONTAINER["lang"];
+	if (STATE_CONTAINER["chapter"] != undefined) {
+		// No support yet
+	} else if (STATE_CONTAINER["manga"] != undefined) {
+		G("https://api.mangadex.org/manga/"+STATE_CONTAINER["manga"]+"/feed?order[chapter]=desc&"+(lang!=undefined?"&locales[]="+lang:"")+"&limit=500",populateChapters);
+	} else if (STATE_CONTAINER["search"] != undefined) {
+		D("search_term").value = STATE_CONTAINER["search"];
+		search();
+	}
+}
 
 function createCachedElement(id, elementType) {
 	let newElement = C(elementType);
@@ -55,7 +82,7 @@ function createCachedElement(id, elementType) {
 	if (idStore[id] != undefined) {
 		newElement.innerText = unescape(idStore[id]);
 	} else {
-		newElement.innerText = "pending";
+		newElement.innerText = id.substring(0,6) + "...";
 		pendingElements.push(newElement);
 	}
 	
@@ -69,7 +96,7 @@ function searchInput(evt){
 	}
 }
 
-function tidyDescription(rawDesc){
+function tidyDescription(rawDesc) {
 	if (rawDesc == null) return "";
 	// Thanks! u/thuniffe
 	return rawDesc.replace(/\[(\/?[biu]|hr)\]/g,"<$1>").replaceAll("[*]","<br />").replace(/\r?\n/g,"<br />")
@@ -136,10 +163,11 @@ function searchOfficial() {
 	performSearch();
 }
 
-function performSearch(){
+function performSearch() {
 	clearSearchOptions();
 	lastKnownSearch = splitTermToTitles(D("search_term").value);
 	lastForcedLocale = "";
+	//window.history.pushState({"action": "search", "keyword": lastKnownSearch, "doujin": blockDoujinshi}, TITLE, "?search=" + lastKnownSearch + (blockDoujinshi?"doujinblock=true":""));
 	G("https://api.mangadex.org/manga?title="+lastKnownSearch+(blockDoujinshi?"&excludedTags[]=b13b2a48-c720-44a9-9c77-39c9979373fb":"")+"&limit=100",populateManga);
 }
 
@@ -165,7 +193,7 @@ function getAuthors(relationsList) {
 	let creatorContainer = C("div");
 	let rawIds = [];
 	for (let i in authorIds) {
-		creatorContainer.appendChild(createCachedElement("author" + authorIds[i], "p"));
+		creatorContainer.appendChild(createCachedElement(authorIds[i], "p"));
 		rawIds.push(authorIds[i]);
 	}
 	if (artistIds.length > 0) {
@@ -174,7 +202,7 @@ function getAuthors(relationsList) {
 		artistHeader.innerHTML = "<b>Artist" + (artistIds.length>1 ?"s":"") + "<b/>: ";
 		creatorContainer.appendChild(artistHeader);
 		for (let i in artistIds) {
-			creatorContainer.appendChild(createCachedElement("author" + artistIds[i], "p"));
+			creatorContainer.appendChild(createCachedElement(artistIds[i], "p"));
 			rawIds.push(artistIds[i]);
 		}
 	}
@@ -226,14 +254,15 @@ function populateManga(resultJson, resultCode) {
 			let row = C("tr");
 			let mangaName = unescape(resultList[resultObj].data.attributes.title.en);
 			let mangaId = resultList[resultObj].data.id;
-			let mandaNameCell = addCell(row, mangaName);
+			let mangaNameCell = addCell(row, mangaName);
 			let descriptionContainer = C("div");
 			descriptionContainer.classList.add("description");
 			descriptionContainer.innerHTML = tidyDescription(unescape(resultList[resultObj].data.attributes.description.en));
 			row.appendChild(descriptionContainer);
-			mandaNameCell.classList.add("link");
-			mandaNameCell.addEventListener("click", () => {
+			mangaNameCell.classList.add("link");
+			mangaNameCell.addEventListener("click", () => {
 				G("https://api.mangadex.org/manga/"+mangaId+"/feed?order[chapter]=desc&limit=500",populateChapters);
+				//window.history.pushState({"action": "feed", "mangaId": mangaId, "offset": 0}, TITLE, "?manga=" + mangaId);
 				currentMangaId = mangaId;
 				D("manga_name").innerHTML=mangaName;
 			});
@@ -256,7 +285,8 @@ function populateManga(resultJson, resultCode) {
 		if (authorIds.length > 0) {
 			// TODO: multiple queries needed if over 100 different authors + artists. This can happen :(
 			// For now only taking the first 100
-			G("https://api.mangadex.org/author?ids[]="+authorIds.splice(0,100).join('&ids[]=')+"&limit=100",populateCache);
+			// Edit: removed authors for now, too many extra queries
+			//G("https://api.mangadex.org/author?ids[]="+authorIds.splice(0,100).join('&ids[]=')+"&limit=100",populateCache);
 		}
 	} else {
 		if (resultCode == 204) {
@@ -268,11 +298,11 @@ function populateManga(resultJson, resultCode) {
 }
 
 function createMangaPageButtons(total, tableCols, pageBaseUrl) {
-	createPageButtons(total, tableCols, pageBaseUrl, 100, populateManga)
+	createPageButtons(total, tableCols, pageBaseUrl, 100, populateManga);
 }
 
 function createChapterPageButtons(total, tableCols, pageBaseUrl) {
-	createPageButtons(total, tableCols, pageBaseUrl, 500, populateChapters)
+	createPageButtons(total, tableCols, pageBaseUrl, 500, populateChapters);
 }
 
 function createPageButtons(total, tableCols, pageBaseUrl, maxResults, callback) {
@@ -330,11 +360,11 @@ function populateChapters(resultJson, resultCode) {
 			let scanGroupType = "scanlation_group";
 			let scanGroupIdRaw = getIdForType(resultList[resultObj].relationships, scanGroupType);
 			let scanGroupId = scanGroupType + scanGroupIdRaw;
-			let scanGroupContainer = createCachedElement(scanGroupId, "p");
+			let scanGroupContainer = createCachedElement(scanGroupIdRaw, "p");
 			let scanGroupCell = C("td");
 			scanGroupCell.appendChild(scanGroupContainer);
 			row.appendChild(scanGroupCell);
-			if (scanlationGroupIds.indexOf(scanGroupIdRaw)<0 && idStore.indexOf(scanGroupId)<0) scanlationGroupIds.push(scanGroupIdRaw);
+			if (scanlationGroupIds.indexOf(scanGroupIdRaw)<0 && idStore.indexOf(scanGroupIdRaw)<0) scanlationGroupIds.push(scanGroupIdRaw);
 			//addCell(row, (new Date(resultList[resultObj].data.attributes.publishAt)).toLocaleString());
 			row.classList.add("link");
 			row.addEventListener("click",()=> {
@@ -346,7 +376,8 @@ function populateChapters(resultJson, resultCode) {
 		if (resultJson.limit < resultJson.total) {
 			createChapterPageButtons(resultJson.total, 3, "https://api.mangadex.org/manga/"+currentMangaId+"/feed?" + (lastForcedLocale.length>0)?"locales[]="+lastForcedLocale+"&":"" + "order[chapter]=desc&limit=500&offset=");
 		}
-		if (scanlationGroupIds.length > 0) G("https://api.mangadex.org/group?ids[]="+scanlationGroupIds.slice(0,100).join('&ids[]=')+"&limit=100",populateCache);
+		// Removed scanlation group population for now
+		// if (scanlationGroupIds.length > 0) G("https://api.mangadex.org/group?ids[]="+scanlationGroupIds.slice(0,100).join('&ids[]=')+"&limit=100",populateCache);
 		if (lastForcedLocale.length == 0 && languageIds.length > 0) createLanguageButtons(languageIds, currentMangaId);
 	} else {
 		if (resultCode == 204) {
@@ -437,6 +468,16 @@ function shortcuts(evt) {
 
 document.addEventListener("keydown", shortcuts);
 
+window.onpopstate = function(event) {
+	if (event.state != undefined && event.state.action != undefined) {
+		// TODO
+	}
+}
+
+window.onload = function() {
+	initPage();
+};
+
 </script>
 <style>
 body {background-color:#c0fefe}
@@ -450,7 +491,7 @@ input[type=button] {margin: 0 1em;}
 .spoiler {display:block}
 .spoiler:not(:hover) {text-color:#101010;background-color:#101010;max-width:20%;max-height:2em;display:block;overflow:hidden}
 .spoiler:not(:hover)>a {text-decoration:none;color:inherit}
-.link,.view_preview {cursor:pointer}
+.link,.view_preview {cursor:pointer;text-decoration:none;color:inherit}
 .view_preview img {margin-top:5%;float:left;width:5%}
 .view_main img {margin:auto;float:left;width:80%;object-fit:contain}
 </style>
@@ -463,11 +504,22 @@ input[type=button] {margin: 0 1em;}
 <div id="view_right" onclick=movePage(-1) class="view_preview"></div>
 </div>
 <div id="search">
-<h3>SimpleDex v0.1.6</h3>
-<input type="text" id="search_term" onkeydown="searchInput(event)"/>
+<h3>SimpleDex v0.1.7</h3>
+<table>
+<tr>
+<td colspan="2"><p>Search for:</p></td>
+</tr>
+<tr>
+<td><input type="text" id="search_term" onkeydown="searchInput(event)"/></td>
+<td>
 <input type="button" onclick="search()" value="Search All Manga"/>
 <input type="button" onclick="searchOfficial()" value="Search Without Doujinshi"/>
-<label for="search_term" id="search_info"></label>
+</td>
+</tr>
+<tr>
+<td><label for="search_term" id="search_info"></label></td>
+</tr>
+</table>
 <div><form id="search_options"></form></div>
 <div id="manga_name"></div>
 <div id="chapter_num"></div>
