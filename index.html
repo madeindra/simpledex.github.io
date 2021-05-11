@@ -38,6 +38,7 @@ function P(path,data,callback) {
 var MAX_PAGES = 100;
 
 // Global static variables for reader
+var blockDoujinshi = false;
 var currentData = [];
 var currentImages = [];
 var currentHash = "";
@@ -126,10 +127,20 @@ function getIdForType(relationsList, type) {
 }
 
 function search() {
+	blockDoujinshi = false;
+	performSearch();
+}
+
+function searchOfficial() {
+	blockDoujinshi = true;
+	performSearch();
+}
+
+function performSearch(){
 	clearSearchOptions();
 	lastKnownSearch = splitTermToTitles(D("search_term").value);
 	lastForcedLocale = "";
-	G("https://api.mangadex.org/manga?title="+lastKnownSearch+"&limit=100",populateManga);
+	G("https://api.mangadex.org/manga?title="+lastKnownSearch+(blockDoujinshi?"&excludedTags[]=b13b2a48-c720-44a9-9c77-39c9979373fb":"")+"&limit=100",populateManga);
 }
 
 function populateError(parent, code, text) {
@@ -429,6 +440,7 @@ document.addEventListener("keydown", shortcuts);
 </script>
 <style>
 body {background-color:#c0fefe}
+input[type=button] {margin: 0 1em;}
 #view {display:none;width=100%;height:100%}
 #search {display:block;width:80%;margin:auto;padding:2em;background-color:#f9fdfe}
 #search_results {display:inline-block}
@@ -451,9 +463,10 @@ body {background-color:#c0fefe}
 <div id="view_right" onclick=movePage(-1) class="view_preview"></div>
 </div>
 <div id="search">
-<h3>SimpleDex v0.1.5</h3>
+<h3>SimpleDex v0.1.6</h3>
 <input type="text" id="search_term" onkeydown="searchInput(event)"/>
-<input type="button" onclick="search()" value="Search Manga"/>
+<input type="button" onclick="search()" value="Search All Manga"/>
+<input type="button" onclick="searchOfficial()" value="Search Without Doujinshi"/>
 <label for="search_term" id="search_info"></label>
 <div><form id="search_options"></form></div>
 <div id="manga_name"></div>
