@@ -12,7 +12,7 @@ var D = function(p) { return A.getElementById(p) };
 var C = function(p) { return A.createElement(p) };
 var q = function(method,path,callback) {
 	let x = new XMLHttpRequest();
-	x.open(method, dm ? path : "https://jsonp.afeld.me/?url="+escape(path), true);
+	x.open(method, dm ? path : "https://gxaxshvw01.execute-api.eu-north-1.amazonaws.com/?url="+escape(path), true);
 	x.onreadystatechange = function() {
 		if (x.readyState == 4) {
 			callback(x.status == 200 ? r(x.responseText) : x.responseText, x.status);
