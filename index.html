@@ -12,7 +12,7 @@ var D = function(p) { return A.getElementById(p) };
 var C = function(p) { return A.createElement(p) };
 var q = function(method,path,callback) {
 	let x = new XMLHttpRequest();
-	x.open(method, dm ? path : "https://gxaxshvw01.execute-api.eu-north-1.amazonaws.com/?url="+escape(path), true);
+	x.open(method, dm ? path : getProxy(path));
 	x.onreadystatechange = function() {
 		if (x.readyState == 4) {
 			callback(x.status == 200 ? r(x.responseText) : x.responseText, x.status);
@@ -21,18 +21,39 @@ var q = function(method,path,callback) {
 	return x;
 }
 function G(path,callback) {
-	let request = q("GET",path,callback);
-	request.send();
+	try {
+		let request = q("GET",path,callback);
+		request.send();
+	} catch (e) {
+		getNewProxy();
+		callback(500, "Connection failed. Try again.");
+	}
 }
+
+/*
+ * This POST function is not used
+ */
 function P(path,data,callback) {
 	let request = q("POST",path,callback);
 	x.setRequestHeader("Content-type", "application/json");
 	x.send(s(data));
 }
 
+var proxylist = ["https://jsonp.afeld.me/?url=", "https://gxaxshvw01.execute-api.eu-north-1.amazonaws.com/?url="];
+var activeProxy = ~~(Math.random() * proxylist.length);
+function getNewProxy() {
+	// Get random proxy which is not the same as current proxy
+	activeProxy = (activeProxy + 1 + (~~(Math.random() * (proxylist.length - 1)))) % proxylist.length;
+	console.log(activeProxy);
+}
+function getProxy(url) {
+	console.log("requesting with proxy: " + proxylist[activeProxy]);
+	return proxylist[activeProxy] + escape(url);
+}
+
 /*
-* Reader specific stuff below
-*/
+ * Reader specific stuff below
+ */
 
 // Max amount of result pages for big searches
 var MAX_PAGES = 100;
@@ -42,28 +63,109 @@ var TITLE = "Jarppi's P&M Reader";
 var blockDoujinshi = false;
 var currentData = [];
 var currentImages = [];
-var currentHash = "";
-var currentIdx = 0;
-var currentMangaId = "";
-var lastKnownSearch = "";
 var lastForcedLocale = "";
 var idStore = [];
 var pendingElements = [];
-var STATE_CONTAINER = [];
+var STATE_CONTAINER = {};
+STATE_CONTAINER.attr = {};
+
+function getCurrentStateUrl() {
+	let currentPath = STATE_CONTAINER.localmode ? "?" : "";
+	if (notEmpty(STATE_CONTAINER.manga)) {
+		currentPath += "/manga/" + STATE_CONTAINER.manga;
+		let tmpC = STATE_CONTAINER.chapter;
+		let tmpH = STATE_CONTAINER.hash;
+		let tmpP = STATE_CONTAINER.page;
+		if (notEmpty(tmpC) && notEmpty(tmpH)) {
+			currentPath += "/chapter/" + tmpC;
+			currentPath += "/" + tmpH;
+			currentPath += "/" + (notEmpty(tmpP) ? tmpP : "0");
+		}
+	} else if (notEmpty(STATE_CONTAINER.search)) {
+		currentPath += "/search/" + STATE_CONTAINER.search;
+	}
+	let attributes = "?";
+	for (let i in STATE_CONTAINER.attr) {
+		let additionalAttribute = STATE_CONTAINER.attr[i];
+		attributes += i + "=" + additionalAttribute + "&";
+	}
+	if (attributes.length > 1) currentPath += attributes.substring(0, attributes.length-1);
+	return currentPath;
+}
+
+function getCurrentState() {
+	const stateNow = {"manga": STATE_CONTAINER.manga, "chapter": STATE_CONTAINER.chapter, "hash": STATE_CONTAINER.hash, "page": STATE_CONTAINER.page};
+	return stateNow;
+}
+function pushCurrentState() {
+	window.history.pushState(getCurrentState(), TITLE, getCurrentStateUrl());
+}
+
+function restoreState() {
+	// Stuff to state container
+}
+
+function notEmpty(param) {
+	return param != undefined && param.length > 0;
+}
 
 function initPage() {
-	//window.history.pushState({"state": "clean"}, TITLE);
-	if (document.location.href.indexOf('?') >= 0) {
-		let urlParams = document.location.href.substring(1+document.location.href.indexOf('?')).split('&');
-		let tmpKeyPairs = [];
+	let urlLoc = document.location.href;
+	let urlStartSign = "//";
+	let urlParamStart = urlLoc.indexOf('/', urlStartSign.length + urlLoc.indexOf(urlStartSign)); // offsetting the uri:// part
+	if (urlLoc.indexOf("http") != 0) {
+		urlParamStart = urlLoc.indexOf('?');
+		STATE_CONTAINER.localmode = true;
+		console.log("Local mode enabled");
+	}
+	let urlParamPart = urlLoc.substring(urlParamStart);
+	console.log("parsing url parameters from " + urlParamPart);
+	if (urlParamStart >= 0) {
+		let urlParamsIdx = urlParamPart.indexOf('?', 1);
+		let urlParams = [];
+		if (urlParamsIdx >= 0) {
+			urlParams = urlParamPart.substring(1 + urlParamsIdx).split('&');
+			urlParamPart = urlParamPart.substring(0, urlParamsIdx);
+		}
 		for (let i in urlParams) {
 			let keypair = urlParams[i].split("=");
-			STATE_CONTAINER[keypair[0]] = keypair.length == 2 ? keypair[1] : null;
+			if (keypair.length == 2) STATE_CONTAINER.attr[keypair[0]] = keypair[1];
 		}
-		restoreSession();
+		let urlParts = urlParamPart.split('/');
+		for (let i = 0; i < urlParts.length; i++) {
+			if (urlParts[i] == "manga" && urlParts.length - 1 > i) {
+				STATE_CONTAINER.manga = urlParts[i+1];
+			} else if (urlParts[i] == "chapter") {
+				if (urlParts.length - 3 > i) {
+					STATE_CONTAINER.chapter = urlParts[i+1];
+					STATE_CONTAINER.hash = urlParts[i+2];
+					STATE_CONTAINER.page = urlParts[i+3];
+				} else if (urlParts.length - 2 > i) {
+					STATE_CONTAINER.chapter = urlParts[i+1];
+					STATE_CONTAINER.hash = urlParts[i+2];
+				}
+			} else if (urlParts[i] == "search" && urlParts.length - 1 > i) {
+				STATE_CONTAINER.search = urlParts[i+1];
+			}
+		}
+		
+		//restoreSession();
 	}
 }
 
+/*
+ * State should reflect current status of the page. No cookies.
+ * Everything comes from url and gets requested via API if that
+ * is needed.
+ *
+ * Valid states should be:
+ * manga populated: /manga/{id} - this shows feed for manga
+ * manga+chapter+hash(+page) populated: - this shows an opened
+ *     chapter (with page number browsed to if present)
+ *
+ * Any real content is not stored in page and is either fetched
+ * from current STATE_CONTAINER or via APIs if not present.
+ */
 function restoreSession() {
 	let lang = STATE_CONTAINER["lang"];
 	if (STATE_CONTAINER["chapter"] != undefined) {
@@ -116,7 +218,7 @@ function createLanguageButtons(languageCodes) {
 			tmpButton.name = "language";
 			tmpButton.addEventListener("change", () => {
 				lastForcedLocale = tmpId;
-				G("https://api.mangadex.org/manga/"+currentMangaId+"/feed?locales[]="+lastForcedLocale+"&order[chapter]=desc&limit=500",populateChapters);
+				G("https://api.mangadex.org/manga/"+STATE_CONTAINER.manga+"/feed?locales[]="+lastForcedLocale+"&order[chapter]=desc&limit=500",populateChapters);
 			});
 			optionsForm.appendChild(tmpButton);
 			let tmpLabel = C("label");
@@ -165,16 +267,21 @@ function searchOfficial() {
 
 function performSearch() {
 	clearSearchOptions();
-	lastKnownSearch = splitTermToTitles(D("search_term").value);
+	STATE_CONTAINER.search = splitTermToTitles(D("search_term").value);
 	lastForcedLocale = "";
-	//window.history.pushState({"action": "search", "keyword": lastKnownSearch, "doujin": blockDoujinshi}, TITLE, "?search=" + lastKnownSearch + (blockDoujinshi?"doujinblock=true":""));
-	G("https://api.mangadex.org/manga?title="+lastKnownSearch+(blockDoujinshi?"&excludedTags[]=b13b2a48-c720-44a9-9c77-39c9979373fb":"")+"&limit=100",populateManga);
+	//window.history.pushState({"action": "search", "keyword": STATE_CONTAINER.search, "doujin": blockDoujinshi}, TITLE, "?search=" + STATE_CONTAINER.search + (blockDoujinshi?"doujinblock=true":""));
+	pushCurrentState();
+	G("https://api.mangadex.org/manga?title="+STATE_CONTAINER.search+(blockDoujinshi?"&excludedTags[]=b13b2a48-c720-44a9-9c77-39c9979373fb":"")+"&limit=100",populateManga);
+}
+
+function clearHud() {
+	D("manga_name").innerText = "-";
+	D("chapter_num").innerText = "-";
 }
 
 function populateError(parent, code, text) {
+	clearHud();
 	D("search_info").innerHTML = "Error " + code;
-	D("manga_name").innerText="";
-	D("chapter_num").innerText = "";
 	if (text != null && text.length > 0) {
 		parent.appendChild(addCell(C("tr"), text));
 	}
@@ -236,8 +343,7 @@ function populateCache(resultJson, resultCode) {
 
 function populateManga(resultJson, resultCode) {
 	let a = D("search_results");
-	D("manga_name").innerText="";
-	D("chapter_num").innerText = "";
+	clearHud();
 	while (a.firstChild) {
 		a.removeChild(a.firstChild);
 	}
@@ -261,10 +367,11 @@ function populateManga(resultJson, resultCode) {
 			row.appendChild(descriptionContainer);
 			mangaNameCell.classList.add("link");
 			mangaNameCell.addEventListener("click", () => {
-				G("https://api.mangadex.org/manga/"+mangaId+"/feed?order[chapter]=desc&limit=500",populateChapters);
 				//window.history.pushState({"action": "feed", "mangaId": mangaId, "offset": 0}, TITLE, "?manga=" + mangaId);
-				currentMangaId = mangaId;
-				D("manga_name").innerHTML=mangaName;
+				STATE_CONTAINER.manga = mangaId;
+				STATE_CONTAINER.attr.mangaName = mangaName;
+				pushCurrentState();
+				G("https://api.mangadex.org/manga/"+mangaId+"/feed?order[chapter]=desc&limit=500",populateChapters);
 			});
 			let authorCell = C("td");
 			let authorResults = getAuthors(resultList[resultObj].relationships);
@@ -280,7 +387,7 @@ function populateManga(resultJson, resultCode) {
 		}
 		D("search_info").innerHTML = resultJson.total + " manga found!";
 		if (resultJson.limit < resultJson.total) {
-			createMangaPageButtons(resultJson.total, 3, "https://api.mangadex.org/manga?title="+lastKnownSearch+"&limit=100&offset=");
+			createMangaPageButtons(resultJson.total, 3, "https://api.mangadex.org/manga?title="+STATE_CONTAINER.search+"&limit=100&offset=");
 		}
 		if (authorIds.length > 0) {
 			// TODO: multiple queries needed if over 100 different authors + artists. This can happen :(
@@ -344,7 +451,7 @@ function populateChapters(resultJson, resultCode) {
 		//addCell(row,"Date");
 		a.appendChild(row);
 		resultList.sort(chapterSort);
-		
+		D("manga_name").innerHTML = STATE_CONTAINER.attr.mangaName;
 		
 		for (let resultObj in resultList) {
 			let row = C("tr");
@@ -374,11 +481,11 @@ function populateChapters(resultJson, resultCode) {
 		}
 		D("search_info").innerHTML = resultJson.total + " chapter" + (resultJson.total != 1 ? "s":"") + " found!";
 		if (resultJson.limit < resultJson.total) {
-			createChapterPageButtons(resultJson.total, 3, "https://api.mangadex.org/manga/"+currentMangaId+"/feed?" + (lastForcedLocale.length>0)?"locales[]="+lastForcedLocale+"&":"" + "order[chapter]=desc&limit=500&offset=");
+			createChapterPageButtons(resultJson.total, 3, "https://api.mangadex.org/manga/"+STATE_CONTAINER.manga+"/feed?" + (lastForcedLocale.length>0)?"locales[]="+lastForcedLocale+"&":"" + "order[chapter]=desc&limit=500&offset=");
 		}
 		// Removed scanlation group population for now
 		// if (scanlationGroupIds.length > 0) G("https://api.mangadex.org/group?ids[]="+scanlationGroupIds.slice(0,100).join('&ids[]=')+"&limit=100",populateCache);
-		if (lastForcedLocale.length == 0 && languageIds.length > 0) createLanguageButtons(languageIds, currentMangaId);
+		if (lastForcedLocale.length == 0 && languageIds.length > 0) createLanguageButtons(languageIds, STATE_CONTAINER.manga);
 	} else {
 		if (resultCode == 204) {
 			D("search_info").innerHTML = "No results";
@@ -402,7 +509,7 @@ function chapterSort(a,b) {
 
 function populateImages(serverJson) {
 	let atHome = serverJson.baseUrl;
-	let imgRoot = atHome + "/data-saver/" + currentHash + "/";
+	let imgRoot = atHome + "/data-saver/" + STATE_CONTAINER.hash + "/";
 	currentImages = [];
 	for (let i in currentData) {
 		var newImg = C("img");
@@ -413,24 +520,24 @@ function populateImages(serverJson) {
 }
 
 function refreshView(){
-	if (currentImages.length == 0 || currentIdx >= currentImages.length || currentIdx < 0){
+	if (currentImages.length == 0 || STATE_CONTAINER.page >= currentImages.length || STATE_CONTAINER.page < 0){
 		console.log("Invalid images");
 		return;
 	}
 	let vtmp = D("view_mid");
 	if (vtmp.firstChild != null) vtmp.removeChild(vtmp.firstChild);
-	vtmp.appendChild(currentImages[currentIdx]);
+	vtmp.appendChild(currentImages[STATE_CONTAINER.page]);
 	
 	vtmp = D("view_right");
 	if (vtmp.firstChild != null) vtmp.removeChild(vtmp.firstChild);
-	if (currentIdx > 0) {
-		vtmp.appendChild(currentImages[currentIdx-1]);
+	if (STATE_CONTAINER.page > 0) {
+		vtmp.appendChild(currentImages[STATE_CONTAINER.page-1]);
 	}
 	
 	vtmp = D("view_left");
 	if (vtmp.firstChild != null) vtmp.removeChild(vtmp.firstChild);
-	if (currentIdx+1 < currentImages.length) {
-		vtmp.appendChild(currentImages[currentIdx+1]);
+	if (STATE_CONTAINER.page+1 < currentImages.length) {
+		vtmp.appendChild(currentImages[STATE_CONTAINER.page+1]);
 	}
 	
 	D("search").style.display="none";
@@ -438,17 +545,19 @@ function refreshView(){
 }
 
 function prepareReader(chapterId, chapterNumber, hashId, pagesData) {
-	currentHash = hashId;
+	STATE_CONTAINER.chapter = chapterId;
+	STATE_CONTAINER.hash = hashId;
 	currentData = pagesData;
-	currentIdx = 0;
+	STATE_CONTAINER.page = 0;
 	D("chapter_num").innerText = chapterNumber;
 	G("https://api.mangadex.org/at-home/server/"+chapterId,populateImages);
 }
 
 function movePage(step){
-	currentIdx+=step;
-	if (currentIdx < 0) currentIdx = 0;
-	else if (currentImages != null && currentIdx >= currentImages.length) currentIdx = currentImages.length-1;
+	STATE_CONTAINER.page += step;
+	pushCurrentState();
+	if (STATE_CONTAINER.page < 0) STATE_CONTAINER.page = 0;
+	else if (currentImages != null && STATE_CONTAINER.page >= currentImages.length) STATE_CONTAINER.page = currentImages.length-1;
 	refreshView();
 }
 
@@ -469,7 +578,7 @@ function shortcuts(evt) {
 document.addEventListener("keydown", shortcuts);
 
 window.onpopstate = function(event) {
-	if (event.state != undefined && event.state.action != undefined) {
+	if (event.state != undefined) {
 		// TODO
 	}
 }
@@ -504,7 +613,7 @@ input[type=button] {margin: 0 1em;}
 <div id="view_right" onclick=movePage(-1) class="view_preview"></div>
 </div>
 <div id="search">
-<h3>SimpleDex v0.1.7</h3>
+<h3>SimpleDex v0.1.8</h3>
 <table>
 <tr>
 <td colspan="2"><p>Search for:</p></td>
@@ -521,8 +630,8 @@ input[type=button] {margin: 0 1em;}
 </tr>
 </table>
 <div><form id="search_options"></form></div>
-<div id="manga_name"></div>
-<div id="chapter_num"></div>
+<div id="manga_name">-</div>
+<div id="chapter_num">-</div>
 <table id="search_results"></table>
 </div>
 </body>
