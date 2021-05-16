@@ -56,9 +56,10 @@ function getProxy(url) {
 
 // Max amount of result pages for big searches
 var MAX_PAGES = 100;
-var TITLE = "Jarppi's P&M Reader";
 
 // Global static variables for reader
+var TITLE = "Jarppi's P&M Reader";
+var NOT_AVAILABLE_IMG = "data:image/png;base64, iVBORw0KGgoAAAANSUhEUgAAAMgAAADIAgMAAADQNkYNAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJUExURf///wAAAMPDww8ClsMAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAPDSURBVGje5dpLktsgEABQazG6QbzQaXyEbKBq2GdhTqPFcANpAacMH0l81C2gy+OkEio15fLMi2jAgGluf7L8YLY8OsDApLFFsWbxwc1WWh/0IcxR1KNXtJkhE9bUyd0U5We1WrIka61qwpzKV+UhZ2H05WMG4CGVFrgbsFy1gITJ0hdJJRqBELzRBkwYjZE7StAGkDhZ+oL3NYMbYLogZu6tF1Kzq3ohNbusF1wzeU2Amg3XAurNsULMORhRI1+99QJqVq3XuWZTncx9TezK0hvKKRgCyaJnzP/jdoHJzAOPfiOsJDMePUYWPBSMaLwjdyILkgUzfRtJ45cgESVJ4i86EiVJ/OPLCC9JEv/USmL8BCJhwk7kaLJy5B+EleSIn0DGZnI02dROZjqR7WQhk9Pssk8XANEVolAydpCtlQlkwsgKkBkjup88K0T2kAUmynci4xoj53XCEY4QDRNbISb6iN6IwQiwFvvBBRPflwDR9iGd5Ko8bk0rflrmtxHZR5ZAbHfLNXSde7mtYaGxV9/i9re+u2RCRCRiJ3onop+wnLjx0kN0JNoRjhD5zcT9sQIIi4QBZPWRmvDxicTFvhFeI24g2+n3IDySFSJ2KCdkPZFfl8RA5Fkn4lUka+SDqEhURkTZlZZMbnZwWw9P9pcFScaY/Yx5IiIRkaidiH6CPUUBRAOxtBAbncCI7WuQ5P1SJfyCSLeqBCLrJESoQpju50FYL2E1sv7NxCSECb8j27vSbznc6rYRsYZ3t5cH8QOPsZcQFYnqIrokLBL5DiJMRjqX/X2G+Y/J0Cn07Z8lflDxfYMktk2mcu+lJN2PheG4Ex52XQVZrkkYu13EDXneTxhAJpwogMw1IsJkXSPy+K/9umFJeg445xv4QJ4bcT+kKsnjgqiXkqGLlN+SXkNMMSx18SXRE/XJWdg4QGQBifui72dWiZIJJNyTZ9n78xvJ2EMejSTpl0dx3LG1lIik7MrTCUlBBEpix0Si/Tp8JgudTO1kppOxneynsANOthmGFQ1WEO2mlfDNzM9jIDmarCRrSeK57XQiK0zOp6Ml0TgZEWI/kJ8ZicfWKNH2jYQkh8Ot62V6BN94GJEe9DceeaTH6Y0kPbQf+0lb/Hk2pSn+PM3TFEyeTGkKJk/ZvCeXREhyUVJphIQdIS1ISD5SUpyERCohXUtJChNSz4QENyWNTkjWE64EUC4eEK43EC5RUK5qEC6EUK6dEC63EK7QUC7qUK4DES4dUa42ES5QUa5pUS6DUa6c3QgX215cbrffl0ris4rA/qgAAAAASUVORK5CYII=";
 var pendingElements = [];
 var STATE_CONTAINER = {};
 var IMAGE_CACHE = {};
@@ -73,7 +74,7 @@ function getCurrentStateUrl() {
 	let tmpP = STATE_CONTAINER.page;
 	if (notEmpty(tmpC)) {
 		currentPath += "/chapter/" + tmpC;
-		currentPath += "/" + (notEmptyNum(tmpP) ? tmpP : "0");
+		currentPath += "/" + ((notEmptyNum(tmpP) || "all" == tmpP) ? tmpP : "0");
 		allowAttributes = false;
 	} else if (notEmpty(STATE_CONTAINER.manga)) {
 		currentPath += "/manga/" + STATE_CONTAINER.manga;
@@ -165,7 +166,9 @@ function initPage() {
 function restoreSession() {
 	console.log("restoring session from path");
 	if (notEmpty(STATE_CONTAINER.chapter)) {
-		if (notEmpty(STATE_CONTAINER.hash) || STATE_CONTAINER.currentData == undefined || STATE_CONTAINER.currentData.length == 0) {
+		if (STATE_CONTAINER.chapter == "demo") {
+			prepareDemoPages();
+		} else if (notEmpty(STATE_CONTAINER.hash) || STATE_CONTAINER.currentData == undefined || STATE_CONTAINER.currentData.length == 0) {
 			refreshChapter();
 		} else {
 			prepareReader();
@@ -427,7 +430,7 @@ function handleMangaResults(resultJson, resultCode) {
 		STATE_CONTAINER.mangaResults.limit = resultJson.limit;
 		STATE_CONTAINER.mangaResults.total = resultJson.total;
 	} else {
-		STATE_CONTAINER.mangaResults.errorCode = resultCode;
+		STATE_CONTAINER.mangaResults.errorCode = parseInt(resultCode);
 		STATE_CONTAINER.mangaResults.errorText = resultJson;
 	}
 	pushCurrentState("populateManga");
@@ -501,7 +504,7 @@ function populateManga() {
 			G("https://api.mangadex.org/author?ids[]="+authorIds.splice(0,100).join('&ids[]=')+"&limit=100",populateCache);
 		}
 	} else {
-		if (STATE_CONTAINER.mangaResults.errorCode == 204) {
+		if (Math.floor(STATE_CONTAINER.mangaResults.errorCode / 100) == 2) {
 			D("search_info").innerHTML = "No results";
 		} else {
 			populateError(a, STATE_CONTAINER.mangaResults.errorCode, STATE_CONTAINER.mangaResults.errorText);
@@ -540,13 +543,38 @@ function createPageButtons(total, tableCols, maxResults, callback) {
 	D("search_results").appendChild(row);
 }
 
+function makeChapterActive(activeChapter) {
+	STATE_CONTAINER.chapter = activeChapter.chapterId;
+	STATE_CONTAINER.hash = activeChapter.hashId;
+	STATE_CONTAINER.currentData = activeChapter.pagesData;
+	STATE_CONTAINER.chapterNumber = activeChapter.chapterNumber;
+	STATE_CONTAINER.scanGroupId = activeChapter.scanGroupId;
+	STATE_CONTAINER.languageId = activeChapter.languageId;
+}
+
+function parseChapter(chapterResult) {
+	let tmpResult = {};
+	tmpResult.chapterId = chapterResult.data.id;
+	tmpResult.title = chapterResult.data.attributes.title;
+	tmpResult.hashId = chapterResult.data.attributes.hash;
+	tmpResult.pagesData = chapterResult.data.attributes.dataSaver;
+	tmpResult.chapterNumber = chapterResult.data.attributes.chapter;
+	tmpResult.languageId = unescape(chapterResult.data.attributes.translatedLanguage);
+	tmpResult.scanGroupId = getIdForType(chapterResult.relationships, "scanlation_group");
+	tmpResult.publishAt = chapterResult.data.attributes.publishAt;
+	// Turn date to milliseconds if it exists
+	tmpResult.publishAt = (tmpResult.publishAt != null ? new Date(tmpResult.publishAt) - 0 : 0);
+	return tmpResult;
+}
+
 function handleSingleChapterRequest(resultJson, resultCode) {
 	clearOldChapterSearch();
 	if (resultCode == 200 && resultJson != undefined) {
-		STATE_CONTAINER.chapter = resultJson.data.id;
-		STATE_CONTAINER.hash = resultJson.data.attributes.hash;
-		STATE_CONTAINER.currentData = resultJson.data.attributes.dataSaver;
-		STATE_CONTAINER.chapterNumber = resultJson.data.attributes.chapter;
+		let tmpChapter = parseChapter(resultJson);
+		STATE_CONTAINER.chapterResults.chapterList.push(tmpChapter);
+		makeChapterActive(tmpChapter);
+		STATE_CONTAINER.chapterResults.limit = 1;
+		STATE_CONTAINER.chapterResults.total = 1;
 	}
 	pushCurrentState("prepareReader");
 	refreshState();
@@ -558,23 +586,13 @@ function handleMultiChapterRequest(resultJson, resultCode) {
 	if (resultCode == 200 && resultList.length > 0) {
 		resultList.sort(chapterSort);
 		for (let resultObj in resultList) {
-			let tmpResult = {};
-			STATE_CONTAINER.chapterResults.chapterList.push(tmpResult);
-			tmpResult.chapterId = resultList[resultObj].data.id;
-			tmpResult.title = resultList[resultObj].data.attributes.title;
-			tmpResult.hashId = resultList[resultObj].data.attributes.hash;
-			tmpResult.pagesData = resultList[resultObj].data.attributes.dataSaver;
-			tmpResult.chapterNumber = resultList[resultObj].data.attributes.chapter;
-			tmpResult.languageId = unescape(resultList[resultObj].data.attributes.translatedLanguage);
-			tmpResult.scanGroupId = getIdForType(resultList[resultObj].relationships, "scanlation_group");
-			tmpResult.publishAt = resultList[resultObj].data.attributes.publishAt;
-			// Turn date to milliseconds if it exists
-			tmpResult.publishAt = (tmpResult.publishAt != null ? new Date(tmpResult.publishAt) - 0 : 0);
+			let tmpChapter = parseChapter(resultList[resultObj]);
+			STATE_CONTAINER.chapterResults.chapterList.push(tmpChapter);
 		}
 		STATE_CONTAINER.chapterResults.limit = resultJson.limit;
 		STATE_CONTAINER.chapterResults.total = resultJson.total;
 	} else {
-		STATE_CONTAINER.chapterResults.errorCode = resultCode;
+		STATE_CONTAINER.chapterResults.errorCode = parseInt(resultCode);
 		STATE_CONTAINER.chapterResults.errorText = resultJson;
 	}
 	pushCurrentState("populateChapters");
@@ -601,7 +619,7 @@ function populateChapters() {
 		addCell(row,"ScanGroup");
 		addCell(row,"Date Published");
 		a.appendChild(row);
-		D("manga_name").innerHTML = STATE_CONTAINER.attr.mangaName != undefined ? STATE_CONTAINER.attr.mangaName : "";
+		D("manga_name").innerHTML = STATE_CONTAINER.attr.mangaName != undefined ? unescape(STATE_CONTAINER.attr.mangaName) : "";
 		
 		for (let i in chapterList) {
 			let tmpChapter = chapterList[i];
@@ -618,10 +636,7 @@ function populateChapters() {
 			addCell(row, (new Date(tmpChapter.publishAt)).toISOString().substring(0, 10));
 			row.classList.add("link");
 			row.addEventListener("click",()=> {
-				STATE_CONTAINER.chapter = tmpChapter.chapterId;
-				STATE_CONTAINER.hash = tmpChapter.hashId;
-				STATE_CONTAINER.currentData = tmpChapter.pagesData;
-				STATE_CONTAINER.chapterNumber = tmpChapter.chapterNumber;
+				makeChapterActive(tmpChapter);
 				STATE_CONTAINER.page = 0;
 				prepareReader();
 			});
@@ -635,7 +650,7 @@ function populateChapters() {
 		if (scanlationGroupIds.length > 0) G("https://api.mangadex.org/group?ids[]="+scanlationGroupIds.slice(0,100).join('&ids[]=')+"&limit=100",populateCache);
 		createLanguageButtons();
 	} else {
-		if (STATE_CONTAINER.chapterResults.errorCode == 204) {
+		if (Math.floor(STATE_CONTAINER.chapterResults.errorCode / 100) == 2) {
 			D("search_info").innerHTML = "No results";
 		} else {
 			populateError(a, STATE_CONTAINER.chapterResults.errorCode, STATE_CONTAINER.chapterResults.resultJson);
@@ -666,6 +681,20 @@ function handleImageServer(serverJson, resultCode) {
 	}
 }
 
+/*
+ * Just for testing layout and stuff
+ */
+function prepareDemoPages() {
+	STATE_CONTAINER.currentImages = [];
+	for (let i = 0; i < 5; i++) {
+		STATE_CONTAINER.currentImages.push("demo"+i);
+		let tmpImg = getCachedImage("demo");
+		IMAGE_CACHE["demo"+i] = tmpImg;
+	}
+	pushCurrentState("refreshView");
+	refreshState();
+}
+
 function populateImages() {
 	STATE_CONTAINER.currentImages = [];
 	let imageCount = 0;
@@ -676,11 +705,16 @@ function populateImages() {
 		if (imgUrl.indexOf("http") == 0) {
 			let newIframe = C("iframe");
 			newIframe.src = imgUrl;
-			newIframe.sandbox = 
 			IMAGE_CACHE[imgUrl] = newIframe;
 		} else {
 			let newImg = C("img");
-			newImg.src = STATE_CONTAINER.dataUrl + imgUrl;
+			if (imgUrl == null || imgUrl.length == 0) {
+				newImg.src = NOT_AVAILABLE_IMG;
+			} else {
+				newImg.src = STATE_CONTAINER.dataUrl + imgUrl;
+			}
+			
+			newImg.addEventListener("error", () => {newImg.alt = "Failed to load image. Try to reload this chapter."});
 			IMAGE_CACHE[imgUrl] = newImg;
 		}
 	}
@@ -700,30 +734,43 @@ function getCachedImage(url) {
 		return IMAGE_CACHE[url];
 	} else {
 		let tmpNotFoundImage = C("img");
-		tmpNotFoundImage.src = "data:image/png;base64, iVBORw0KGgoAAAANSUhEUgAAAMgAAADIAgMAAADQNkYNAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJUExURf///wAAAMPDww8ClsMAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAPDSURBVGje5dpLktsgEABQazG6QbzQaXyEbKBq2GdhTqPFcANpAacMH0l81C2gy+OkEio15fLMi2jAgGluf7L8YLY8OsDApLFFsWbxwc1WWh/0IcxR1KNXtJkhE9bUyd0U5We1WrIka61qwpzKV+UhZ2H05WMG4CGVFrgbsFy1gITJ0hdJJRqBELzRBkwYjZE7StAGkDhZ+oL3NYMbYLogZu6tF1Kzq3ohNbusF1wzeU2Amg3XAurNsULMORhRI1+99QJqVq3XuWZTncx9TezK0hvKKRgCyaJnzP/jdoHJzAOPfiOsJDMePUYWPBSMaLwjdyILkgUzfRtJ45cgESVJ4i86EiVJ/OPLCC9JEv/USmL8BCJhwk7kaLJy5B+EleSIn0DGZnI02dROZjqR7WQhk9Pssk8XANEVolAydpCtlQlkwsgKkBkjup88K0T2kAUmynci4xoj53XCEY4QDRNbISb6iN6IwQiwFvvBBRPflwDR9iGd5Ko8bk0rflrmtxHZR5ZAbHfLNXSde7mtYaGxV9/i9re+u2RCRCRiJ3onop+wnLjx0kN0JNoRjhD5zcT9sQIIi4QBZPWRmvDxicTFvhFeI24g2+n3IDySFSJ2KCdkPZFfl8RA5Fkn4lUka+SDqEhURkTZlZZMbnZwWw9P9pcFScaY/Yx5IiIRkaidiH6CPUUBRAOxtBAbncCI7WuQ5P1SJfyCSLeqBCLrJESoQpju50FYL2E1sv7NxCSECb8j27vSbznc6rYRsYZ3t5cH8QOPsZcQFYnqIrokLBL5DiJMRjqX/X2G+Y/J0Cn07Z8lflDxfYMktk2mcu+lJN2PheG4Ex52XQVZrkkYu13EDXneTxhAJpwogMw1IsJkXSPy+K/9umFJeg445xv4QJ4bcT+kKsnjgqiXkqGLlN+SXkNMMSx18SXRE/XJWdg4QGQBifui72dWiZIJJNyTZ9n78xvJ2EMejSTpl0dx3LG1lIik7MrTCUlBBEpix0Si/Tp8JgudTO1kppOxneynsANOthmGFQ1WEO2mlfDNzM9jIDmarCRrSeK57XQiK0zOp6Ml0TgZEWI/kJ8ZicfWKNH2jYQkh8Ot62V6BN94GJEe9DceeaTH6Y0kPbQf+0lb/Hk2pSn+PM3TFEyeTGkKJk/ZvCeXREhyUVJphIQdIS1ISD5SUpyERCohXUtJChNSz4QENyWNTkjWE64EUC4eEK43EC5RUK5qEC6EUK6dEC63EK7QUC7qUK4DES4dUa42ES5QUa5pUS6DUa6c3QgX215cbrffl0ris4rA/qgAAAAASUVORK5CYII=";
+		tmpNotFoundImage.src = NOT_AVAILABLE_IMG;
 		return tmpNotFoundImage;
 	}
 }
 
 function refreshView(){
-	if (STATE_CONTAINER.currentImages.length == 0 || STATE_CONTAINER.page >= STATE_CONTAINER.currentImages.length || STATE_CONTAINER.page < 0){
-		console.log("Invalid images");
+	if (STATE_CONTAINER.currentImages == null || STATE_CONTAINER.currentImages.length == 0) {
+		console.log("No images found");
 		return;
 	}
-	let vtmp = D("view_mid");
-	if (vtmp.firstChild != null) vtmp.removeChild(vtmp.firstChild);
-	vtmp.appendChild(getCachedImage(STATE_CONTAINER.currentImages[STATE_CONTAINER.page]));
-	
-	vtmp = D("view_right");
-	if (vtmp.firstChild != null) vtmp.removeChild(vtmp.firstChild);
-	if (STATE_CONTAINER.page > 0) {
-		vtmp.appendChild(getCachedImage(STATE_CONTAINER.currentImages[STATE_CONTAINER.page-1]));
-	}
-	
-	vtmp = D("view_left");
-	if (vtmp.firstChild != null) vtmp.removeChild(vtmp.firstChild);
-	if (STATE_CONTAINER.page+1 < STATE_CONTAINER.currentImages.length) {
-		vtmp.appendChild(getCachedImage(STATE_CONTAINER.currentImages[STATE_CONTAINER.page-0+1]));
+	if (STATE_CONTAINER.page == "all") {
+		let vtmp = D("view_mid");
+		while (vtmp.firstChild != null) vtmp.removeChild(vtmp.firstChild);
+		for (let i in STATE_CONTAINER.currentImages) {
+			vtmp.appendChild(getCachedImage(STATE_CONTAINER.currentImages[i]));
+			vtmp.appendChild(C("br"));
+		}
+	} else {
+		if (STATE_CONTAINER.page >= STATE_CONTAINER.currentImages.length || STATE_CONTAINER.page < 0){
+			console.log("Invalid page");
+			return;
+		}
+		let vtmp = D("view_mid");
+		while (vtmp.firstChild != null) vtmp.removeChild(vtmp.firstChild);
+		vtmp.appendChild(getCachedImage(STATE_CONTAINER.currentImages[STATE_CONTAINER.page]));
+		
+		vtmp = D("view_right");
+		while (vtmp.firstChild != null) vtmp.removeChild(vtmp.firstChild);
+		if (STATE_CONTAINER.page > 0) {
+			vtmp.appendChild(getCachedImage(STATE_CONTAINER.currentImages[STATE_CONTAINER.page-1]));
+		}
+		
+		vtmp = D("view_left");
+		while (vtmp.firstChild != null) vtmp.removeChild(vtmp.firstChild);
+		if (STATE_CONTAINER.page+1 < STATE_CONTAINER.currentImages.length) {
+			vtmp.appendChild(getCachedImage(STATE_CONTAINER.currentImages[STATE_CONTAINER.page-0+1]));
+		}
 	}
 	showViewer();
 }
@@ -733,10 +780,89 @@ function prepareReader() {
 	G("https://api.mangadex.org/at-home/server/"+STATE_CONTAINER.chapter,handleImageServer);
 }
 
+function getCurrentChapterIdx() {
+	for (let i = 0; i < STATE_CONTAINER.chapterResults.chapterList.length; i++) {
+		let tmpChap = STATE_CONTAINER.chapterResults.chapterList[i];
+		if (tmpChap.chapterId == STATE_CONTAINER.chapter) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+function nextChapter() {
+	let currentIdx = getCurrentChapterIdx();
+	if (currentIdx < 0) return; // State doesn't include current chapter, cannot advance
+	
+	if (STATE_CONTAINER.page != "all") STATE_CONTAINER.page = 0;
+	let groupId = STATE_CONTAINER.scanGroupId;
+	let langId = STATE_CONTAINER.languageId;
+	// List is sorted by chapter. First match with both language and ID is returned. If no ID match, then just matching by language
+	let possibleMatch = null;
+	let bestMatch = null;
+	for (let i = currentIdx - 1; i > 0; i--) {
+		let tmpChap = STATE_CONTAINER.chapterResults.chapterList[i];
+		if (tmpChap.languageId == langId) {
+			if (possibleMatch == null) possibleMatch = tmpChap;
+			if (tmpChap.scanGroupId == groupId) {
+				bestMatch = tmpChap;
+				break;
+			}
+		}
+	}
+	if (bestMatch != null) makeChapterActive(bestMatch);
+	else if (possibleMatch != null) makeChapterActive(possibleMatch);
+	else return;
+	pushCurrentState("prepareReader");
+	refreshState();
+}
+
+function previousChapter() {
+	let currentIdx = getCurrentChapterIdx();
+	if (currentIdx < 0) return; // State doesn't include current chapter, cannot advance
+	
+	if (STATE_CONTAINER.page != "all") STATE_CONTAINER.page = 0;
+	let groupId = STATE_CONTAINER.scanGroupId;
+	let langId = STATE_CONTAINER.languageId;
+	// List is sorted by chapter. First match with both language and ID is returned. If no ID match, then just matching by language
+	let possibleMatch = null;
+	let bestMatch = null;
+	for (let i = currentIdx + 1; i < STATE_CONTAINER.chapterResults.chapterList.length; i++) {
+		let tmpChap = STATE_CONTAINER.chapterResults.chapterList[i];
+		if (tmpChap.languageId == langId) {
+			if (possibleMatch == null) possibleMatch = tmpChap;
+			if (tmpChap.scanGroupId == groupId) {
+				bestMatch = tmpChap;
+				break;
+			}
+		}
+	}
+	if (bestMatch != null) makeChapterActive(bestMatch);
+	else if (possibleMatch != null) makeChapterActive(possibleMatch);
+	else return;
+	pushCurrentState("prepareReader");
+	refreshState();
+}
+
 function movePage(step){
+	if (STATE_CONTAINER.page == "all" && step > 0) return nextChapter();
+	else if (STATE_CONTAINER.page == "all" && step < 0) return previousChapter();
+	
 	STATE_CONTAINER.page = STATE_CONTAINER.page - 0 + step;
-	if (STATE_CONTAINER.page < 0) STATE_CONTAINER.page = 0;
-	else if (STATE_CONTAINER.currentImages != null && STATE_CONTAINER.page >= STATE_CONTAINER.currentImages.length) STATE_CONTAINER.page = STATE_CONTAINER.currentImages.length-1;
+	if (STATE_CONTAINER.page < 0) return previousChapter();
+	else if (STATE_CONTAINER.currentImages != null && STATE_CONTAINER.page >= STATE_CONTAINER.currentImages.length) return nextChapter();
+	
+	pushCurrentState("refreshView");
+	refreshState();
+}
+
+function allPagesToggle() {
+	if (STATE_CONTAINER.page == "all") {
+		STATE_CONTAINER.page = (STATE_CONTAINER.lastPageViewed != null && !isNaN(STATE_CONTAINER.lastPageViewed-0) ? STATE_CONTAINER.lastPageViewed-0 : 0);
+	} else {
+		STATE_CONTAINER.lastPageViewed = STATE_CONTAINER.page;
+		STATE_CONTAINER.page = "all";
+	}
 	pushCurrentState("refreshView");
 	refreshState();
 }
@@ -788,7 +914,7 @@ window.onload = function() {
 </script>
 <style>
 body {background-color:#c0fefe}
-input[type=button] {margin: 0 1em;}
+input[type=button] {margin:0.5em 1em;}
 #view {display:none;height:100%}
 #search {display:block;width:80%;margin:auto;padding:2em;background-color:#f9fdfe}
 #search_results {display:inline-block}
@@ -801,19 +927,28 @@ input[type=button] {margin: 0 1em;}
 .spoiler:not(:hover) {text-color:#101010;background-color:#101010;max-width:20%;max-height:2em;display:block;overflow:hidden}
 .spoiler:not(:hover)>a {text-decoration:none;color:inherit}
 .link,.view_preview {cursor:pointer;text-decoration:none;color:inherit}
-.view_preview img {margin-top:5%;float:left;width:5%}
-.view_main img {margin:auto;float:left;width:80%;object-fit:contain}
+.view_preview {marin:0;width:5%;vertical-align:top}
+.view_preview div {margin-top: 2em;}
+.view_main {width:80%}
+.view_preview img {float:left;object-fit:contain;width:100%}
+.view_main img {object-fit:contain;width:100%}
 </style>
 </head>
 <body>
 <div id="view">
 <input type="button" onclick="returnToSearch()" value="Back to Search"/>
-<div id="view_left" onclick=movePage(1) class="view_preview"></div>
-<div id="view_mid" class="view_main"></div>
-<div id="view_right" onclick=movePage(-1) class="view_preview"></div>
+<input type="button" onclick="allPagesToggle()" value="Toggle All Pages"/>
+</br>
+<table><tr>
+<td class="view_preview" onclick="movePage(1)"><div id="view_left"></div></td>
+<td class="view_main"><div id="view_mid"></div></td>
+<td class="view_preview" onclick="movePage(-1)"><div id="view_right"></div></td>
+</tr></table>
+<input type="button" onclick="nextChapter()" value="Next Chapter"/>
+<input type="button" onclick="previousChapter()" value="Previous Chapter"/>
 </div>
 <div id="search">
-<h3>SimpleDex v0.1.9</h3>
+<h3>SimpleDex v0.1.10</h3>
 <table class="searchbar">
 <tr>
 <td colspan="2"><p>Search for:</p></td>
