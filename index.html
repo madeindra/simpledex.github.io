@@ -70,11 +70,9 @@ function getCurrentStateUrl() {
 	let currentPath = "#";
 	let allowAttributes = true;
 	let tmpC = STATE_CONTAINER.chapter;
-	let tmpH = STATE_CONTAINER.hash;
 	let tmpP = STATE_CONTAINER.page;
-	if (notEmpty(tmpC) && notEmpty(tmpH)) {
+	if (notEmpty(tmpC)) {
 		currentPath += "/chapter/" + tmpC;
-		currentPath += "/" + tmpH;
 		currentPath += "/" + (notEmptyNum(tmpP) ? tmpP : "0");
 		allowAttributes = false;
 	} else if (notEmpty(STATE_CONTAINER.manga)) {
@@ -140,15 +138,9 @@ function initPage() {
 		for (let i = 0; i < urlParts.length; i++) {
 			if (urlParts[i] == "manga" && urlParts.length - 1 > i) {
 				STATE_CONTAINER.manga = urlParts[i+1];
-			} else if (urlParts[i] == "chapter") {
-				if (urlParts.length - 3 > i) {
-					STATE_CONTAINER.chapter = urlParts[i+1];
-					STATE_CONTAINER.hash = urlParts[i+2];
-					STATE_CONTAINER.page = urlParts[i+3];
-				} else if (urlParts.length - 2 > i) {
-					STATE_CONTAINER.chapter = urlParts[i+1];
-					STATE_CONTAINER.hash = urlParts[i+2];
-				}
+			} else if (urlParts[i] == "chapter" && urlParts.length - 2 > i) {
+				STATE_CONTAINER.chapter = urlParts[i+1];
+				STATE_CONTAINER.page = urlParts[i+2]-0;
 			} else if (urlParts[i] == "search" && urlParts.length - 1 > i) {
 				STATE_CONTAINER.search = urlParts[i+1];
 			}
@@ -172,8 +164,12 @@ function initPage() {
  */
 function restoreSession() {
 	console.log("restoring session from path");
-	if (notEmpty(STATE_CONTAINER.chapter) && notEmpty(STATE_CONTAINER.hash)) {
-		prepareReader();
+	if (notEmpty(STATE_CONTAINER.chapter)) {
+		if (notEmpty(STATE_CONTAINER.hash) || STATE_CONTAINER.currentData == undefined || STATE_CONTAINER.currentData.length == 0) {
+			refreshChapter();
+		} else {
+			prepareReader();
+		}
 	} else if (notEmpty(STATE_CONTAINER.manga)) {
 		statefulChapterQuery();
 	} else if (notEmpty(STATE_CONTAINER.search)) {
@@ -182,10 +178,14 @@ function restoreSession() {
 	}
 }
 
+function refreshChapter() {
+	G("https://api.mangadex.org/chapter/"+STATE_CONTAINER.chapter,handleSingleChapterRequest);
+}
+
 function statefulChapterQuery() {
 	let locale = notEmpty(STATE_CONTAINER.locale) ? "&locales[]=" + STATE_CONTAINER.locale : "";
 	let offset = notEmptyNum(STATE_CONTAINER.attr.offset) ? "&offset=" + STATE_CONTAINER.attr.offset : "";
-	G("https://api.mangadex.org/manga/"+STATE_CONTAINER.manga+"/feed?order[chapter]=desc&limit=500"+offset+locale,handleChapterRequest);
+	G("https://api.mangadex.org/manga/"+STATE_CONTAINER.manga+"/feed?order[chapter]=desc&limit=500"+offset+locale,handleMultiChapterRequest);
 }
 
 function createCachedElement(id, elementType) {
@@ -540,14 +540,23 @@ function createPageButtons(total, tableCols, maxResults, callback) {
 	D("search_results").appendChild(row);
 }
 
-function handleChapterRequest(resultJson, resultCode) {
+function handleSingleChapterRequest(resultJson, resultCode) {
+	clearOldChapterSearch();
+	if (resultCode == 200 && resultJson != undefined) {
+		STATE_CONTAINER.chapter = resultJson.data.id;
+		STATE_CONTAINER.hash = resultJson.data.attributes.hash;
+		STATE_CONTAINER.currentData = resultJson.data.attributes.dataSaver;
+		STATE_CONTAINER.chapterNumber = resultJson.data.attributes.chapter;
+	}
+	pushCurrentState("prepareReader");
+	refreshState();
+}
+
+function handleMultiChapterRequest(resultJson, resultCode) {
 	let resultList = resultJson != null ? resultJson.results : [];
 	clearOldChapterSearch();
 	if (resultCode == 200 && resultList.length > 0) {
-		let scanlationGroupIds = [];
-		let languageIds = [];
 		resultList.sort(chapterSort);
-		
 		for (let resultObj in resultList) {
 			let tmpResult = {};
 			STATE_CONTAINER.chapterResults.chapterList.push(tmpResult);
@@ -612,8 +621,8 @@ function populateChapters() {
 				STATE_CONTAINER.chapter = tmpChapter.chapterId;
 				STATE_CONTAINER.hash = tmpChapter.hashId;
 				STATE_CONTAINER.currentData = tmpChapter.pagesData;
+				STATE_CONTAINER.chapterNumber = tmpChapter.chapterNumber;
 				STATE_CONTAINER.page = 0;
-				D("chapter_num").innerText = tmpChapter.chapterNumber;
 				prepareReader();
 			});
 			a.appendChild(row);
@@ -646,16 +655,22 @@ function chapterSort(a,b) {
 
 }
 
-function handleImageServer(serverJson) {
-	let atHome = serverJson.baseUrl;
-	let imgRoot = atHome + "/data-saver/" + STATE_CONTAINER.hash + "/";
-	STATE_CONTAINER.dataUrl = imgRoot;
-	populateImages();
+function handleImageServer(serverJson, resultCode) {
+	if (resultCode == 200) {
+		let atHome = serverJson.baseUrl;
+		let imgRoot = atHome + "/data-saver/" + STATE_CONTAINER.hash + "/";
+		STATE_CONTAINER.dataUrl = imgRoot;
+		populateImages();
+	} else {
+		D("chapter_num").innerText = "Failed to get chapter. Try again. Error: " + serverJson;
+	}
 }
 
 function populateImages() {
 	STATE_CONTAINER.currentImages = [];
-	for (let i in STATE_CONTAINER.currentData) { // TODO: refresh container if not found
+	let imageCount = 0;
+	for (let i in STATE_CONTAINER.currentData) {
+		imageCount += 1;
 		let imgUrl = STATE_CONTAINER.currentData[i];
 		STATE_CONTAINER.currentImages.push(imgUrl);
 		if (imgUrl.indexOf("http") == 0) {
@@ -669,8 +684,10 @@ function populateImages() {
 			IMAGE_CACHE[imgUrl] = newImg;
 		}
 	}
-	pushCurrentState("refreshView");
-	refreshState();
+	if (imageCount > 0) {
+		pushCurrentState("refreshView");
+		refreshState();
+	}
 }
 
 function showViewer() {
@@ -682,7 +699,9 @@ function getCachedImage(url) {
 	if (IMAGE_CACHE[url] != null) {
 		return IMAGE_CACHE[url];
 	} else {
-		
+		let tmpNotFoundImage = C("img");
+		tmpNotFoundImage.src = "data:image/png;base64, iVBORw0KGgoAAAANSUhEUgAAAMgAAADIAgMAAADQNkYNAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJUExURf///wAAAMPDww8ClsMAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAPDSURBVGje5dpLktsgEABQazG6QbzQaXyEbKBq2GdhTqPFcANpAacMH0l81C2gy+OkEio15fLMi2jAgGluf7L8YLY8OsDApLFFsWbxwc1WWh/0IcxR1KNXtJkhE9bUyd0U5We1WrIka61qwpzKV+UhZ2H05WMG4CGVFrgbsFy1gITJ0hdJJRqBELzRBkwYjZE7StAGkDhZ+oL3NYMbYLogZu6tF1Kzq3ohNbusF1wzeU2Amg3XAurNsULMORhRI1+99QJqVq3XuWZTncx9TezK0hvKKRgCyaJnzP/jdoHJzAOPfiOsJDMePUYWPBSMaLwjdyILkgUzfRtJ45cgESVJ4i86EiVJ/OPLCC9JEv/USmL8BCJhwk7kaLJy5B+EleSIn0DGZnI02dROZjqR7WQhk9Pssk8XANEVolAydpCtlQlkwsgKkBkjup88K0T2kAUmynci4xoj53XCEY4QDRNbISb6iN6IwQiwFvvBBRPflwDR9iGd5Ko8bk0rflrmtxHZR5ZAbHfLNXSde7mtYaGxV9/i9re+u2RCRCRiJ3onop+wnLjx0kN0JNoRjhD5zcT9sQIIi4QBZPWRmvDxicTFvhFeI24g2+n3IDySFSJ2KCdkPZFfl8RA5Fkn4lUka+SDqEhURkTZlZZMbnZwWw9P9pcFScaY/Yx5IiIRkaidiH6CPUUBRAOxtBAbncCI7WuQ5P1SJfyCSLeqBCLrJESoQpju50FYL2E1sv7NxCSECb8j27vSbznc6rYRsYZ3t5cH8QOPsZcQFYnqIrokLBL5DiJMRjqX/X2G+Y/J0Cn07Z8lflDxfYMktk2mcu+lJN2PheG4Ex52XQVZrkkYu13EDXneTxhAJpwogMw1IsJkXSPy+K/9umFJeg445xv4QJ4bcT+kKsnjgqiXkqGLlN+SXkNMMSx18SXRE/XJWdg4QGQBifui72dWiZIJJNyTZ9n78xvJ2EMejSTpl0dx3LG1lIik7MrTCUlBBEpix0Si/Tp8JgudTO1kppOxneynsANOthmGFQ1WEO2mlfDNzM9jIDmarCRrSeK57XQiK0zOp6Ml0TgZEWI/kJ8ZicfWKNH2jYQkh8Ot62V6BN94GJEe9DceeaTH6Y0kPbQf+0lb/Hk2pSn+PM3TFEyeTGkKJk/ZvCeXREhyUVJphIQdIS1ISD5SUpyERCohXUtJChNSz4QENyWNTkjWE64EUC4eEK43EC5RUK5qEC6EUK6dEC63EK7QUC7qUK4DES4dUa42ES5QUa5pUS6DUa6c3QgX215cbrffl0ris4rA/qgAAAAASUVORK5CYII=";
+		return tmpNotFoundImage;
 	}
 }
 
@@ -704,17 +723,18 @@ function refreshView(){
 	vtmp = D("view_left");
 	if (vtmp.firstChild != null) vtmp.removeChild(vtmp.firstChild);
 	if (STATE_CONTAINER.page+1 < STATE_CONTAINER.currentImages.length) {
-		vtmp.appendChild(getCachedImage(STATE_CONTAINER.currentImages[STATE_CONTAINER.page+1]));
+		vtmp.appendChild(getCachedImage(STATE_CONTAINER.currentImages[STATE_CONTAINER.page-0+1]));
 	}
 	showViewer();
 }
 
 function prepareReader() {
+	D("chapter_num").innerText = STATE_CONTAINER.chapterNumber;
 	G("https://api.mangadex.org/at-home/server/"+STATE_CONTAINER.chapter,handleImageServer);
 }
 
 function movePage(step){
-	STATE_CONTAINER.page += step;
+	STATE_CONTAINER.page = STATE_CONTAINER.page - 0 + step;
 	if (STATE_CONTAINER.page < 0) STATE_CONTAINER.page = 0;
 	else if (STATE_CONTAINER.currentImages != null && STATE_CONTAINER.page >= STATE_CONTAINER.currentImages.length) STATE_CONTAINER.page = STATE_CONTAINER.currentImages.length-1;
 	pushCurrentState("refreshView");
@@ -745,7 +765,7 @@ function shortcuts(evt) {
 
 document.addEventListener("keydown", shortcuts);
 
-var allActions = [initPage, refreshView, populateManga, populateChapters];
+var allActions = [initPage, refreshView, prepareReader, populateManga, populateChapters];
 var ACTIONS = [];
 for (let i in allActions) {
 	ACTIONS[allActions[i].name] = allActions[i];
@@ -793,7 +813,7 @@ input[type=button] {margin: 0 1em;}
 <div id="view_right" onclick=movePage(-1) class="view_preview"></div>
 </div>
 <div id="search">
-<h3>SimpleDex v0.1.8</h3>
+<h3>SimpleDex v0.1.9</h3>
 <table class="searchbar">
 <tr>
 <td colspan="2"><p>Search for:</p></td>
