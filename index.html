@@ -248,10 +248,10 @@ function createLanguageButtons() {
 }
 
 function clearOldMangaSearch() {
-	STATE_CONTAINER.manga = "";
 	STATE_CONTAINER.mangaResults = {};
 	STATE_CONTAINER.mangaResults.mangaList = [];
 	STATE_CONTAINER.locale = "";
+	STATE_CONTAINER.manga = "";
 	STATE_CONTAINER.attr.mangaName = "";
 	let optionsForm = D("search_options");
 	while (optionsForm.firstChild) optionsForm.removeChild(optionsForm.firstChild);
@@ -334,12 +334,14 @@ function getIdForType(relationsList, type) {
 
 function search() {
 	STATE_CONTAINER.attr.includeDoujin = true;
+	STATE_CONTAINER.attr.offset = 0;
 	STATE_CONTAINER.search = splitTermToTitles(D("search_term").value);
 	statefulSearchQuery();
 }
 
 function searchOfficial() {
 	STATE_CONTAINER.attr.includeDoujin = false;
+	STATE_CONTAINER.attr.offset = 0;
 	STATE_CONTAINER.search = splitTermToTitles(D("search_term").value);
 	statefulSearchQuery();
 }
@@ -949,7 +951,7 @@ input[type=button] {margin:0.5em 1em;}
 <input type="button" onclick="previousChapter()" value="Previous Chapter"/>
 </div>
 <div id="search">
-<h3>SimpleDex v0.1.10</h3>
+<h3>SimpleDex v0.1.11</h3>
 <table class="searchbar">
 <tr>
 <td colspan="2"><p>Search for:</p></td>
