@@ -360,6 +360,7 @@ function statefulSearchQuery() {
 function clearHud() {
 	D("manga_name").innerText = "-";
 	D("chapter_num").innerText = "-";
+	D("scangroup_name").innerText = "-";
 }
 
 function populateError(parent, code, text) {
@@ -780,6 +781,10 @@ function refreshView(){
 
 function prepareReader() {
 	D("chapter_num").innerText = STATE_CONTAINER.chapterNumber;
+	let scangroupContainer = D("scangroup_name");
+	while (scangroupContainer.firstChild != null) scangroupContainer.removeChild(scangroupContainer.firstChild);
+	scangroupContainer.appendChild(document.createTextNode("Scanlation by: "));
+	scangroupContainer.appendChild(createCachedElement(STATE_CONTAINER.scanGroupId, "span"));
 	G("https://api.mangadex.org/at-home/server/"+STATE_CONTAINER.chapter,handleImageServer);
 }
 
@@ -801,20 +806,20 @@ function nextChapter() {
 	let groupId = STATE_CONTAINER.scanGroupId;
 	let langId = STATE_CONTAINER.languageId;
 	// List is sorted by chapter. First match with both language and ID is returned. If no ID match, then just matching by language
-	let possibleMatch = null;
 	let bestMatch = null;
+	let currentChapterValue = STATE_CONTAINER.chapterResults.chapterList[currentIdx].chapterNumber;
 	for (let i = currentIdx - 1; i > 0; i--) {
 		let tmpChap = STATE_CONTAINER.chapterResults.chapterList[i];
 		if (tmpChap.languageId == langId) {
-			if (possibleMatch == null) possibleMatch = tmpChap;
+			if (bestMatch == null && currentChapterValue != tmpChap.chapterNumber) bestMatch = tmpChap;
 			if (tmpChap.scanGroupId == groupId) {
 				bestMatch = tmpChap;
 				break;
 			}
+			if (bestMatch.chapterNumber != tmpChap.chapterNumber) break;
 		}
 	}
 	if (bestMatch != null) makeChapterActive(bestMatch);
-	else if (possibleMatch != null) makeChapterActive(possibleMatch);
 	else return;
 	pushCurrentState("prepareReader");
 	refreshState();
@@ -828,20 +833,20 @@ function previousChapter() {
 	let groupId = STATE_CONTAINER.scanGroupId;
 	let langId = STATE_CONTAINER.languageId;
 	// List is sorted by chapter. First match with both language and ID is returned. If no ID match, then just matching by language
-	let possibleMatch = null;
 	let bestMatch = null;
+	let currentChapterValue = STATE_CONTAINER.chapterResults.chapterList[currentIdx].chapterNumber;
 	for (let i = currentIdx + 1; i < STATE_CONTAINER.chapterResults.chapterList.length; i++) {
 		let tmpChap = STATE_CONTAINER.chapterResults.chapterList[i];
 		if (tmpChap.languageId == langId) {
-			if (possibleMatch == null) possibleMatch = tmpChap;
+			if (bestMatch == null && currentChapterValue != tmpChap.chapterNumber) bestMatch = tmpChap;
 			if (tmpChap.scanGroupId == groupId) {
 				bestMatch = tmpChap;
 				break;
 			}
+			if (bestMatch.chapterNumber != tmpChap.chapterNumber) break;
 		}
 	}
 	if (bestMatch != null) makeChapterActive(bestMatch);
-	else if (possibleMatch != null) makeChapterActive(possibleMatch);
 	else return;
 	pushCurrentState("prepareReader");
 	refreshState();
@@ -942,6 +947,9 @@ input[type=button] {margin:0.5em 1em;}
 <input type="button" onclick="returnToSearch()" value="Back to Search"/>
 <input type="button" onclick="allPagesToggle()" value="Toggle All Pages"/>
 </br>
+<div id="manga_name">-</div>
+<div id="chapter_num">-</div>
+<div id="scangroup_name">-</div>
 <table><tr>
 <td class="view_preview" onclick="movePage(1)"><div id="view_left"></div></td>
 <td class="view_main"><div id="view_mid"></div></td>
@@ -951,7 +959,7 @@ input[type=button] {margin:0.5em 1em;}
 <input type="button" onclick="previousChapter()" value="Previous Chapter"/>
 </div>
 <div id="search">
-<h3>SimpleDex v0.1.12</h3>
+<h3>SimpleDex v0.1.13</h3>
 <table class="searchbar">
 <tr>
 <td colspan="2"><p>Search for:</p></td>
@@ -968,8 +976,6 @@ input[type=button] {margin:0.5em 1em;}
 </tr>
 </table>
 <div><form id="search_options"></form></div>
-<div id="manga_name">-</div>
-<div id="chapter_num">-</div>
 <table id="search_results"></table>
 </div>
 </body>
