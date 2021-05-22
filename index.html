@@ -186,7 +186,7 @@ function refreshChapter() {
 }
 
 function statefulChapterQuery() {
-	let locale = notEmpty(STATE_CONTAINER.locale) ? "&locales[]=" + STATE_CONTAINER.locale : "";
+	let locale = notEmpty(STATE_CONTAINER.locale) ? "&translatedLanguage[]=" + STATE_CONTAINER.locale : "";
 	let offset = notEmptyNum(STATE_CONTAINER.attr.offset) ? "&offset=" + STATE_CONTAINER.attr.offset : "";
 	G("https://api.mangadex.org/manga/"+STATE_CONTAINER.manga+"/feed?order[chapter]=desc&limit=500"+offset+locale,handleMultiChapterRequest);
 }
