@@ -891,9 +891,9 @@ function showSearch() {
 function shortcuts(evt) {
 	if (evt.srcElement == D("search_term")) return;
 	if (evt.keyCode == 37 || evt.keyCode == 65) {
-		movePage(1)
+		movePage(-1)
 	} else if (evt.keyCode == 39 || evt.keyCode == 68) {
-		movePage(-1);
+		movePage(1);
 	}
 }
 
@@ -955,8 +955,8 @@ input[type=button] {margin:0.5em 1em;}
 <td class="view_main"><div id="view_mid"></div></td>
 <td class="view_preview" onclick="movePage(-1)"><div id="view_right"></div></td>
 </tr></table>
-<input type="button" onclick="nextChapter()" value="Next Chapter"/>
 <input type="button" onclick="previousChapter()" value="Previous Chapter"/>
+<input type="button" onclick="nextChapter()" value="Next Chapter"/>
 </div>
 <div id="search">
 <h3>SimpleDex v0.1.13</h3>
